@@ -1,0 +1,137 @@
+---
+title: "Predicting Mariners Baseball Wins through LDA"
+author: "Natanya Glatt"
+date: "4/24/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(MASS)
+library(tidyverse)
+library(klaR)
+
+set.seed(25)
+# loading in Mariners individual game data
+marinersData <- read.delim("GameData2015.txt")
+
+#data to create covariance matrix
+mariners <- read.delim("GameData2015copy.txt")
+
+#creating training and test model, half of data going to training and half going to testing
+training_sample <- sample(c(TRUE, FALSE), nrow(marinersData), replace = T, prob = c(0.6,0.4))
+train <- marinersData[training_sample, ]
+test <- marinersData[!training_sample, ]
+
+#LDA training model for graphic purposes
+lda.mariners <- lda(games ~ ., train)
+
+```
+# Introduction
+
+This paper will use Mariners game data to explore and derive a classification model for predicting Mariners wins.
+In the background section, we will discuss the context of our data. In the assumptions section, we will verify the assumptions that should be met when conducting the analysis. Using Linear Discriminant Analysis, this paper will create a predictive model that can be used to predict future observations of Mariners baseball game wins and losses. In the conclusions section, we will report our conclusions and discuss weaknesses of this analysis.
+
+In this paper, we carry out all our computations in R [1]. We use the Mass package [2] to generate all of the basic plots, and we use the klar package [3] to make the partition plot.
+
+# Background
+
+To conduct this analysis, we collected Mariners baseball 2015 game data from Baseball-Reference.com. The table below depicts the first 6 rows of each column in our data.
+
+
+```{r, echo=FALSE}
+knitr::kable(head(marinersData), row.names = FALSE)
+```
+
+
+The variables included:
+
+games: the wins or losses we are trying to predict
+
+atbat: A batter reaches base via a fielder's choice, hit or an error or when a batter is put out on a non-sacrifice
+
+runs: Making it to home plate safely 
+
+hits: Credited to a batter when he safely reaches first base after hitting the ball
+
+strikeouts: Occurs when a pitcher gets a batter to rack up three strikes during their time at bat.
+
+numPlayers: The number of players per game
+
+We are trying to predict a categorical variable defined by the two levels, wins and losses. The rest of the columns are the numeric independent variables that we believe would help us predict baseball wins.
+
+
+# Assumptions
+
+Before conducting our Linear Discriminant Analysis, there are two assumptions we need to verify about our data:
+
+1.	The data has a Guassian distribution
+2.	The covariance of explanatory variables is equal across all classes
+
+
+To verify the frst assumption we will generate four density plots to check if each of our numeric explanatory variables have a guassian distribution. The data is plotted below:
+
+```{r, echo=FALSE}
+lattice::densityplot(~ atBat+runs+hits+strikeout+numPlayers, data = marinersData)
+```
+
+
+
+It appears that all variables have a gaussian distribution. This means this assumption is verified and can continue onto the next one. In our case the covariances for each explanatory variables are equal across classes. To do this we created a covariance matrix:
+
+```{r, echo=FALSE}
+cov(mariners)
+```
+
+The diagonal line representes the variance of each variable and the rest are the covariance of one variable given the others. Although not equal there are no covariances that are obsurdly different from the others. While this assumption is not verified, we will continue with the analysis.
+
+
+#Analysis
+
+To build our predictive model, we have chosen to specify prior probabilities. A prior probability is the probability that an observation will fall into a group before you collect data. By doing so we separated our data into two subsets: a training set and a testing set. The training set is used to build our predictive model and our testing set is used to evaluate the accuracy of our model. Since the sample size is small and out of recommendation, we have decided to separate our data by giving the training get 60% and the test set 40%. 
+
+Plotting the data using a basic plot function illustrates how the observation of wins and losses are grouped together.
+
+```{r, echo =FALSE}
+plot(lda.mariners, col = as.integer(train$games))
+```
+
+This plot above helps give us broad understanding where between the two groups there is overlap. However, we used the klaR package we can plot the linear discriminate functions. Below the plots outputs an array of plots for every combination of two variables. This gives us a more specified understanding of where some of this overlap is generating.
+
+```{r, echo=FALSE}
+#partition plot for all pairs of linear discriminants
+partimat(games ~ runs + hits + strikeout+ atBat+numPlayers, data=train, method="lda")
+```
+
+The two colors delinate each classifcation area, in our case wins or losses. Any observation that falls into a region is predicted to be from a spceific class. All letters in red signify a wrong predition. Its clear that some pairs of variables produce more error together than others. To evaluate this more closely we ran the model against the training set to verify the goodness of fit. The table output below is a confusion matrix with actual wins and losses as the row labels and the oredicted wins and losses as the column lables.
+
+```{r, echo=FALSE}
+#LDA  training prediction for graphical purposes
+lda.train <- predict(lda.mariners)
+train$lda <- lda.train$class
+table(train$lda,train$games)
+```
+
+
+The results are not great but certainly not bad. The total number of correctly predicted observations is the sum of the diagonal, which is equal to 23 . While this model fit the training data correctly for almost every observation, we are only testing the training set which is not proving accuracy. Since our training set shown us that the data fits the model pretty well, we will now run our tedt set against the training model in order to actually determine its accuracy. Below is our accuracy model:
+
+
+```{r, echo=FALSE}
+#LDA testing prediction for graphical purposes
+lda.test <- predict(lda.mariners,test)
+test$lda <- lda.test$class
+table(test$lda,test$games)
+```
+
+
+The output above shows that the accuracy of this model is not that good. It appears to have more of a problem predicting wins. Based on the partitiion plot above, this outcome isn't very surprising. The large error rates we see are produced by the difficulty for the model to differeniate between the explanatory variables.
+
+
+#Conclusion
+
+One of the main weakness of this model lies in have a small sample size of 39 observation. We can its affect through the partition and basic plot. The model is having a hard time differentiating various pairs of discriminates. For example looking specifically at the partition plot, the highest error rates are at 0.571 and 0.5. It appears that the model is having difficulty differentiating hits from both strikeouts and at bats. That would most likely be because hits is both correlated with strikeouts and at bats. If a batter is hitting the ball a lot then there is a decrease in strikeouts. Similarly with at bats, the more hits the less at bats. Exploring the reasoning behind that could be an interesting new project to explore. 
+
+Another evident problem is that the covariances of each classes are not identical. This also contributes to the models faulty prediction. This is because the equality of covariance matrices constrains the decision boundary to be linear. If the covariance were closer to equal we might see a change in how the model discriminates betweent the pairs.
+
+In conclusion, we would not recommened using this model to predict the outcome of Mariners games. The three reasons above contribute to the model being poor and it might be interesting to explore other models that preidict categorical outcomes like Logistic regression.
+
